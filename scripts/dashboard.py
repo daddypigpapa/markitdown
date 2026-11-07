@@ -119,6 +119,8 @@ def ocr_pdf(job, path):
         def extract_text(self, image_stream, **kwargs):
             result = super().extract_text(image_stream, **kwargs)
             job["done"] += 1
+            job["failed"] += bool(result.error or not result.text.strip())
+            job["page_time"] = time.time()
             return result
 
     job["total"] = len(pdfium.PdfDocument(path))
@@ -148,7 +150,7 @@ def convert_epub(job, path):
 def run(job):
     folder = DATA / job["id"]
     source = folder / job["source"]
-    job["status"] = "running"
+    job["status"], job["started"] = "running", time.time()
     save(job)
     try:
         md = ocr_pdf(job, source) if job["kind"] == "pdf" else convert_epub(job, source)
@@ -175,6 +177,7 @@ def run(job):
     except Exception as e:
         traceback.print_exc()
         job["status"], job["error"] = "error", str(e)
+    job["finished"] = time.time()
     save(job)
 
 
@@ -249,7 +252,7 @@ class Handler(BaseHTTPRequestHandler):
             self.rfile.read(length)
             return self.send_json({"error": "PDF 또는 EPUB 파일만 올릴 수 있습니다."}, 400)
         job = {"id": uuid.uuid4().hex[:12], "name": name, "kind": kind, "source": f"source.{kind}", "created": time.time(),
-               "split": self.headers.get("X-Split") == "1", "status": "queued", "done": 0, "total": 0}
+               "split": self.headers.get("X-Split") == "1", "status": "queued", "done": 0, "failed": 0, "total": 0}
         folder = DATA / job["id"]
         folder.mkdir()
         with open(folder / job["source"], "wb") as f:
