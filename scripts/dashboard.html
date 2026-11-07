@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>문서 변환 대시보드</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<style>
+:root { --bg:#f6f6f4; --panel:#fff; --line:#dddcd6; --text:#23231f; --muted:#6c6b63; --accent:#1f6f5c; --accent-soft:#e2f0ec; --warn:#9a5b00; --warn-soft:#fbf0dc; --err:#b3261e; }
+@media (prefers-color-scheme: dark) { :root { --bg:#191a18; --panel:#222320; --line:#3a3b36; --text:#e9e8e2; --muted:#a3a299; --accent:#6cc5ad; --accent-soft:#25403a; --warn:#e6b566; --warn-soft:#3f3220; --err:#f2968f; } }
+* { box-sizing:border-box; }
+html, body { height:100%; margin:0; }
+body { background:var(--bg); color:var(--text); font:14px/1.5 "Malgun Gothic","Apple SD Gothic Neo",system-ui,sans-serif; display:grid; grid-template-columns:280px 1fr 1fr; }
+aside, section { min-width:0; min-height:0; display:flex; flex-direction:column; }
+aside { border-right:1px solid var(--line); padding:14px; gap:12px; overflow:auto; }
+section + section { border-left:1px solid var(--line); }
+h1 { font-size:16px; margin:0; }
+#drop { word-break:keep-all; border:2px dashed var(--line); border-radius:8px; background:var(--panel); padding:22px 12px; text-align:center; color:var(--muted); cursor:pointer; }
+#drop:hover, #drop:focus-visible, #drop.over { border-color:var(--accent); background:var(--accent-soft); color:var(--text); outline:none; }
+label.opt { display:flex; gap:8px; align-items:center; }
+#error { color:var(--err); margin:0; }
+#error:empty { display:none; }
+#jobs { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px; }
+#jobs button { width:100%; text-align:left; border:1px solid var(--line); border-radius:6px; background:var(--panel); color:inherit; font:inherit; padding:8px 10px; cursor:pointer; }
+#jobs button[aria-current="true"] { border-color:var(--accent); box-shadow:inset 3px 0 0 var(--accent); }
+.name { display:block; font-weight:600; overflow-wrap:anywhere; }
+.state { display:block; color:var(--muted); font-size:12px; }
+.state.error { color:var(--err); }
+progress { width:100%; height:6px; accent-color:var(--accent); display:block; margin-top:4px; }
+.bar { display:flex; align-items:center; gap:8px; padding:8px 12px; border-bottom:1px solid var(--line); background:var(--panel); min-height:45px; flex-wrap:wrap; }
+.bar strong { margin-right:auto; }
+.bar select { flex:1 1 180px; min-width:0; }
+select, .bar button, .bar a { font:inherit; color:inherit; background:var(--bg); border:1px solid var(--line); border-radius:5px; padding:3px 8px; text-decoration:none; cursor:pointer; }
+.bar button:disabled { opacity:.45; cursor:default; }
+#source { flex:1; display:flex; min-height:0; overflow:auto; align-items:flex-start; }
+#source canvas { width:100%; display:block; }
+iframe { flex:1; height:100%; border:0; width:100%; background:#fff; }
+#mdview { flex:1; overflow:auto; padding:16px 20px; background:var(--panel); }
+#mdview img { max-width:100%; }
+#mdview table { border-collapse:collapse; display:block; overflow-x:auto; }
+#mdview th, #mdview td { border:1px solid var(--line); padding:4px 8px; }
+#mdview pre.raw { white-space:pre-wrap; overflow-wrap:anywhere; font:13px/1.6 Consolas,monospace; margin:0; }
+#mdview .katex-display { overflow-x:auto; overflow-y:hidden; }
+.notice { background:var(--warn-soft); color:var(--warn); padding:6px 12px; font-size:13px; border-bottom:1px solid var(--line); }
+.notice:empty { display:none; }
+.notice details summary { cursor:pointer; }
+.empty { color:var(--muted); margin:auto; padding:20px; text-align:center; }
+@media (max-width: 900px) {
+  body { display:block; height:auto; }
+  aside { border-right:0; border-bottom:1px solid var(--line); }
+  section { height:80vh; }
+  section + section { border-left:0; border-top:1px solid var(--line); }
+}
+</style>
+</head>
+<body>
+<aside>
+  <h1>문서 변환</h1>
+  <div id="drop" role="button" tabindex="0">PDF·EPUB 파일을 여기에 끌어놓거나<br>클릭해서 선택하세요</div>
+  <input id="file" type="file" accept=".pdf,.epub" multiple hidden>
+  <label class="opt"><input id="split" type="checkbox" checked> 단원별로 분할 (목차를 AI가 판단)</label>
+  <p id="error" role="alert"></p>
+  <ul id="jobs"></ul>
+</aside>
+<section aria-label="원본">
+  <div class="bar"><strong>원본</strong><span id="nav" hidden>
+    <button id="prev" type="button">이전</button> <span id="pos"></span> <button id="next" type="button">다음</button></span></div>
+  <div id="source"><p class="empty">왼쪽에서 작업을 선택하세요.</p></div>
+</section>
+<section aria-label="변환 결과">
+  <div class="bar"><strong>Markdown</strong>
+    <select id="parts" aria-label="결과 파일" hidden></select>
+    <button id="mode" type="button" hidden>원문 보기</button>
+    <a id="save" hidden>내려받기</a></div>
+  <div id="notice" class="notice"></div>
+  <div id="mdview"><p class="empty">변환이 끝나면 여기에 표시됩니다.</p></div>
+</section>
+<script>
+const $ = id => document.getElementById(id);
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+const LABEL = { queued:'대기 중', running:'변환 중', splitting:'목차 분석·분할 중', done:'완료', error:'실패' };
+let jobs = [], current = null, shownSource = null, shownPart = null, pos = 0, pageCount = 0, pdfDoc = null, pdfId = null, raw = false, mdText = '', mdBase = null;
+
+async function upload(files) {
+  $('error').textContent = '';
+  for (const file of files) {
+    const r = await fetch('/api/upload', { method:'POST', body:file, headers:{
+      'X-File-Name': encodeURIComponent(file.name), 'X-Split': $('split').checked ? '1' : '0' } });
+    const body = await r.json();
+    if (!r.ok) { $('error').textContent = `${file.name}: ${body.error}`; continue; }
+    current = body.id; pos = 0;
+  }
+  refresh();
+}
+
+function stateText(j) {
+  if (j.status === 'running' && j.total) return `변환 중 ${j.done}/${j.total}쪽`;
+  if (j.status === 'done') return j.parts.length > 1 ? `완료 · 파일 ${j.parts.length}개` : '완료 · 파일 1개';
+  if (j.status === 'error') return `실패: ${j.error}`;
+  return LABEL[j.status];
+}
+
+function drawJobs() {
+  $('jobs').replaceChildren(...jobs.map(j => {
+    const li = document.createElement('li'), b = document.createElement('button');
+    b.type = 'button';
+    b.setAttribute('aria-current', j.id === current);
+    const name = document.createElement('span'); name.className = 'name'; name.textContent = j.name;
+    const st = document.createElement('span'); st.className = 'state' + (j.status === 'error' ? ' error' : ''); st.textContent = stateText(j);
+    b.append(name, st);
+    if (j.status === 'running' && j.total) { const p = document.createElement('progress'); p.max = j.total; p.value = j.done; b.append(p); }
+    b.onclick = () => { current = j.id; pos = 0; draw(); };
+    li.append(b);
+    return li;
+  }));
+}
+
+async function drawPdfPage(key) {
+  const page = await pdfDoc.getPage(pos + 1);
+  const box = $('source'), ratio = devicePixelRatio || 1;
+  const viewport = page.getViewport({ scale: box.clientWidth * ratio / page.getViewport({ scale:1 }).width });
+  const c = document.createElement('canvas');
+  c.width = viewport.width; c.height = viewport.height;
+  c.setAttribute('aria-label', `원본 ${pos + 1}쪽`);
+  await page.render({ canvasContext:c.getContext('2d'), viewport }).promise;
+  if (key === shownSource) { box.replaceChildren(c); box.scrollTop = 0; }
+}
+
+async function drawSource(j) {
+  const spine = j.kind === 'epub' ? j.spine : null;
+  const key = `${j.id}:${pos}`;
+  if (key === shownSource) return;
+  if (j.kind === 'epub' && !spine) {  // the file list comes from the conversion
+    shownSource = null;
+    $('nav').hidden = true;
+    $('source').innerHTML = '<p class="empty">변환이 끝나면 표시됩니다.</p>';
+    return;
+  }
+  shownSource = key;
+  if (spine) {
+    const f = document.createElement('iframe');
+    f.title = '원본 문서';
+    f.src = `/files/${j.id}/epub/${spine[pos].split('/').map(encodeURIComponent).join('/')}`;
+    $('source').replaceChildren(f);
+    pageCount = spine.length;
+  } else {
+    if (pdfId !== j.id) { pdfDoc = await pdfjsLib.getDocument(`/files/${j.id}/source`).promise; pdfId = j.id; }
+    pageCount = pdfDoc.numPages;
+    await drawPdfPage(key);
+  }
+  $('nav').hidden = false;
+  $('pos').textContent = `${pos + 1} / ${pageCount}`;
+  $('prev').disabled = pos === 0;
+  $('next').disabled = pos === pageCount - 1;
+}
+
+function drawNotice(j) {
+  $('notice').replaceChildren();
+  if (j.note) $('notice').append(j.note);
+  if (j.flags && j.flags.length) {
+    const d = document.createElement('details'), s = document.createElement('summary');
+    s.textContent = `확인이 필요한 쪽 ${j.flags.length}건`;
+    d.append(s, ...j.flags.map(([page, why]) => { const x = document.createElement('div'); x.textContent = `${page}쪽: ${why}`; return x; }));
+    $('notice').append(d);
+  }
+}
+
+// Math is pulled out first: Markdown would otherwise eat its backslashes and underscores.
+function render(text) {
+  text = text.replace(/^\*\[Image OCR\]$|^\[End OCR\]\*$/gm, '');
+  const math = [];
+  const hold = (tex, display) => { math.push(katex.renderToString(tex, { displayMode:display, throwOnError:false })); return `@@MATH${math.length - 1}@@`; };
+  text = text.replace(/\$\$([\s\S]+?)\$\$/g, (_, t) => hold(t, true)).replace(/(?<![\\$])\$([^$\n]+?)\$/g, (_, t) => hold(t, false));
+  const html = DOMPurify.sanitize(marked.parse(text));
+  return html.replace(/@@MATH(\d+)@@/g, (_, i) => math[i]);
+}
+
+function drawMd() {
+  const pre = () => { const p = document.createElement('pre'); p.className = 'raw'; p.textContent = mdText; $('mdview').replaceChildren(p); };
+  if (raw || !window.marked || !window.katex || !window.DOMPurify) pre();
+  else {
+    $('mdview').innerHTML = render(mdText);
+    if (mdBase) for (const img of $('mdview').querySelectorAll('img')) img.src = new URL(img.getAttribute('src'), mdBase);
+  }
+  $('mode').textContent = raw ? '렌더링 보기' : '원문 보기';
+}
+
+async function openPart(j, part) {
+  shownPart = `${j.id}:${part.file}`;
+  mdBase = j.kind === 'epub' ? `${location.origin}/files/${j.id}/epub/${j.spine[part.first - 1]}` : null;
+  const url = `/files/${j.id}/md/${encodeURIComponent(part.file)}`;
+  $('save').href = url; $('save').download = part.file;
+  mdText = await (await fetch(url)).text();
+  $('mdview').scrollTop = 0;
+  drawMd();
+}
+
+function drawResult(j) {
+  const ready = j.status === 'done';
+  for (const id of ['parts', 'mode', 'save']) $(id).hidden = !ready;
+  if (!ready) {
+    shownPart = null;
+    $('mdview').innerHTML = '<p class="empty"></p>';
+    $('mdview').firstChild.textContent = stateText(j);
+    return;
+  }
+  if (shownPart && shownPart.startsWith(j.id)) return;
+  const unit = j.kind === 'pdf' ? '쪽' : '번째 문서';
+  $('parts').replaceChildren(...j.parts.map((p, i) => new Option(`${p.title} (${p.first}–${p.last}${unit})`, i)));
+  openPart(j, j.parts[0]);
+}
+
+function draw() {
+  drawJobs();
+  const j = jobs.find(x => x.id === current);
+  if (!j) return;
+  drawSource(j); drawNotice(j); drawResult(j);
+}
+
+async function refresh() {
+  jobs = await (await fetch('/api/jobs')).json();
+  draw();
+}
+
+const drop = $('drop');
+drop.onclick = () => $('file').click();
+drop.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('file').click(); } };
+$('file').onchange = e => { upload([...e.target.files]); e.target.value = ''; };
+for (const t of ['dragenter', 'dragover']) addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); });
+addEventListener('dragleave', e => { if (!e.relatedTarget) drop.classList.remove('over'); });
+addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('over'); upload([...e.dataTransfer.files]); });
+$('parts').onchange = e => { const j = jobs.find(x => x.id === current), part = j.parts[e.target.value]; openPart(j, part); pos = part.first - 1; draw(); };
+$('mode').onclick = () => { raw = !raw; drawMd(); };
+$('prev').onclick = () => { pos--; draw(); };
+$('next').onclick = () => { pos++; draw(); };
+refresh();
+setInterval(() => { if (jobs.some(j => !['done', 'error'].includes(j.status))) refresh(); }, 2000);
+</script>
+</body>
+</html>

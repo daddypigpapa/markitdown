@@ -6,7 +6,7 @@ the plugin's own _ocr_full_pages() directly. The README's CLI flags
 (--llm-client/--llm-model) do not exist in this CLI, hence a script.
 
 setup:  pip install -e packages/markitdown-ocr openai
-key:    GEMINI_API_KEY from the environment, else from ~/claude/key.env
+key:    VISION_OCR_GEMINI_API_KEY from the environment, else from ~/claude/key.env
 usage:  python -X utf8 scripts/ocr_pdf.py {full|plugin} IN.pdf OUT.md [first-last pages, 1-based]
 """
 import io
@@ -22,7 +22,7 @@ from markitdown import MarkItDown, StreamInfo
 from markitdown_ocr._ocr_service import LLMVisionOCRService
 from markitdown_ocr._pdf_converter_with_ocr import PdfConverterWithOCR
 
-MODEL = "gemini-flash-latest"
+MODEL = "gemini-3.8-flash"  # pinned: *-latest aliases can change underneath; 0 misreads in a 3-page comparison
 PROMPT = (
     "This is one page of a Korean middle-school math textbook. "
     "Transcribe everything on the page as GitHub-flavored Markdown, in reading order. "
@@ -67,14 +67,18 @@ def load_pdf(path, pages):
     return buf
 
 
+def make_client():
+    load_dotenv(Path.home() / "claude" / "key.env")  # does not override a real env var
+    return OpenAI(
+        api_key=os.environ["VISION_OCR_GEMINI_API_KEY"],
+        base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+    )
+
+
 def main():
     mode, src, out = sys.argv[1:4]
     pages = sys.argv[4] if len(sys.argv) > 4 else None
-    load_dotenv(Path.home() / "claude" / "key.env")  # does not override a real env var
-    client = OpenAI(
-        api_key=os.environ["GEMINI_API_KEY"],
-        base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
-    )
+    client = make_client()
     pdf = load_pdf(src, pages)
     t0 = time.time()
     if mode == "full":
