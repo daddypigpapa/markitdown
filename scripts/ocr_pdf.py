@@ -7,7 +7,8 @@ the plugin's own _ocr_full_pages() directly. The README's CLI flags
 
 setup:  pip install -e packages/markitdown-ocr openai
 key:    VISION_OCR_GEMINI_API_KEY from the environment, else from ~/claude/key.env
-usage:  python -X utf8 scripts/ocr_pdf.py {full|plugin} IN.pdf OUT.md [first-last pages, 1-based]
+usage:  python -X utf8 scripts/ocr_pdf.py {full|plugin} IN.pdf OUT.md [first-last pages, 1-based] [--kinds=figure,math,text]
+        (--kinds picks the full-mode prompt by document type; see KINDS)
 """
 import functools
 import io
@@ -41,6 +42,34 @@ PROMPT = (
     "Omit the printer's slug line (file name, date, '페이지', 'MAC3') and decorative elements. "
     "Return only the Markdown, no commentary."
 )
+# --kinds: what the uploader said the document is (any2mdhub's upload checkboxes). Without it, PROMPT above.
+CORE = (
+    "This is one page of a document. "
+    "Transcribe everything on the page as GitHub-flavored Markdown, in reading order. "
+    "Copy exactly as printed: do not solve, correct, complete or comment on anything, and add no notes or guesses. "
+    "On a multi-column page, read the whole left column top to bottom, then the next column. "
+    "If a character cannot be read, write [?] in its place instead of guessing. "
+    "Keep Korean text exactly as printed, with normal Korean word spacing. Use Markdown tables for tables. "
+    "Omit running headers and footers, page numbers, the printer's slug line and decorative elements. "
+    "Return only the Markdown, no commentary."
+)
+KINDS = {
+    "figure": "The page mixes pictures and text. For each photo, illustration or diagram, write one line in square "
+              "brackets saying what it shows, at the place it appears, and keep its caption.",
+    "math": "The page is mostly math and graphs. Write all math in LaTeX: inline as $...$, display as $$...$$ "
+            "(square roots as \\sqrt{}, powers as ^{}, fractions as \\frac{}{}). Keep problem numbers, circled numbers "
+            "and answer choices. For a graph, write one line in square brackets with its axes, labels and marked points.",
+    "text": "The page is mostly text. Keep headings as Markdown headings, and keep paragraphs and lists. "
+            "Use LaTeX only for formulas that are actually printed.",
+}
+
+
+def make_prompt(kinds):
+    """CORE plus one sentence group per checked kind, in a fixed order; no kinds -> PROMPT."""
+    unknown = set(kinds) - set(KINDS)
+    if unknown:
+        raise ValueError(f"unknown kinds {sorted(unknown)}; use {list(KINDS)}")
+    return " ".join([CORE] + [KINDS[k] for k in KINDS if k in kinds]) if kinds else PROMPT
 
 
 class LoggedOCR(LLMVisionOCRService):
@@ -83,13 +112,16 @@ def make_client(reasoning_effort=None):
 
 
 def main():
-    mode, src, out = sys.argv[1:4]
-    pages = sys.argv[4] if len(sys.argv) > 4 else None
+    kinds = [k for a in sys.argv if a.startswith("--kinds=") for k in a[8:].split(",") if k]
+    args = [a for a in sys.argv[1:] if not a.startswith("--kinds=")]
+    mode, src, out = args[:3]
+    pages = args[3] if len(args) > 3 else None
+    prompt = make_prompt(kinds)  # before any API call: a typo in --kinds fails here, for free
     client = make_client(OCR_EFFORT)
     pdf = load_pdf(src, pages)
     t0 = time.time()
     if mode == "full":
-        service = LoggedOCR(client=client, model=MODEL, default_prompt=PROMPT)
+        service = LoggedOCR(client=client, model=MODEL, default_prompt=prompt)
         markdown = PdfConverterWithOCR()._ocr_full_pages(pdf, service)
     else:  # as documented: MarkItDown(enable_plugins=True, llm_client, llm_model)
         md = MarkItDown(enable_plugins=True, llm_client=client, llm_model=MODEL)
