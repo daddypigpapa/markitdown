@@ -166,3 +166,6 @@ cython_debug/
 src/.DS_Store
 .DS_Store
 .cursorrules
+
+# OCR dashboard uploads and results (books; never commit)
+dashboard_data/
