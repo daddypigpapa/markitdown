@@ -15,11 +15,23 @@
 @media (prefers-color-scheme: dark) { :root { --bg:#191a18; --panel:#222320; --line:#3a3b36; --text:#e9e8e2; --muted:#a3a299; --accent:#6cc5ad; --accent-soft:#25403a; --warn:#e6b566; --warn-soft:#3f3220; --err:#f2968f; } }
 * { box-sizing:border-box; }
 html, body { height:100%; margin:0; }
-body { background:var(--bg); color:var(--text); font:14px/1.5 "Malgun Gothic","Apple SD Gothic Neo",system-ui,sans-serif; display:grid; grid-template-columns:280px 1fr 1fr; }
+body { background:var(--bg); color:var(--text); font:14px/1.5 "Malgun Gothic","Apple SD Gothic Neo",system-ui,sans-serif; display:grid; grid-template-columns:280px 1fr 1fr; grid-template-rows:auto minmax(0,1fr); }
+header { grid-column:1 / -1; position:sticky; top:0; z-index:5; display:flex; align-items:center; gap:8px 16px; flex-wrap:wrap; padding:6px 14px; min-height:48px; background:var(--panel); border-bottom:1px solid var(--line); }
+header h1 { display:flex; align-items:center; gap:8px; white-space:nowrap; }
+header h1 img { width:28px; height:28px; }
+header h1 small { font-size:13px; font-weight:400; color:var(--muted); }
+#open { font:inherit; font-weight:600; color:#fff; background:var(--accent); border:0; border-radius:6px; padding:5px 14px; cursor:pointer; }
 aside, section { min-width:0; min-height:0; display:flex; flex-direction:column; }
 aside { border-right:1px solid var(--line); padding:14px; gap:12px; overflow:auto; }
 section + section { border-left:1px solid var(--line); }
 h1 { font-size:16px; margin:0; }
+h2 { font-size:14px; margin:0; }
+.sort { display:flex; gap:4px; }
+.sort button { flex:1; font:inherit; font-size:12px; color:inherit; background:var(--bg); border:1px solid var(--line); border-radius:5px; padding:3px 8px; cursor:pointer; }
+.sort button[aria-pressed="true"] { border-color:var(--accent); background:var(--accent-soft); font-weight:600; }
+dialog { width:280px; padding:14px; border:1px solid var(--line); border-radius:10px; background:var(--bg); color:var(--text); }
+dialog::backdrop { background:rgb(0 0 0 / .25); backdrop-filter:blur(4px); }
+dialog .close { display:block; margin:10px 0 0 auto; font:inherit; color:inherit; background:var(--panel); border:1px solid var(--line); border-radius:5px; padding:3px 10px; cursor:pointer; }
 #drop { word-break:keep-all; border:2px dashed var(--line); border-radius:8px; background:var(--panel); padding:22px 12px; text-align:center; color:var(--muted); cursor:pointer; }
 #drop:hover, #drop:focus-visible, #drop.over { border-color:var(--accent); background:var(--accent-soft); color:var(--text); outline:none; }
 label.opt { display:flex; gap:8px; align-items:center; }
@@ -32,12 +44,15 @@ label.opt { display:flex; gap:8px; align-items:center; }
 .state { display:block; color:var(--muted); font-size:12px; }
 .state.error { color:var(--err); }
 progress { width:100%; height:6px; accent-color:var(--accent); display:block; margin-top:4px; }
-#stats { border:1px solid var(--line); border-radius:8px; background:var(--panel); padding:10px 12px; }
-.rate { display:flex; justify-content:space-between; align-items:baseline; }
-.rate strong { font-size:22px; font-variant-numeric:tabular-nums; }
-#stats dl { display:grid; grid-template-columns:auto 1fr; gap:2px 12px; margin:8px 0 0; font-size:12px; }
+#stats { display:flex; align-items:center; gap:6px 14px; flex-wrap:wrap; font-size:12px; }
+#stats[hidden] { display:none; }
+.rate { display:flex; align-items:baseline; gap:6px; }
+.rate strong { font-size:18px; font-variant-numeric:tabular-nums; }
+#stats progress { width:100px; margin:0; }
+#stats dl { display:flex; flex-wrap:wrap; gap:2px 14px; margin:0; }
+#stats dl div { display:flex; gap:5px; }
 #stats dt { color:var(--muted); }
-#stats dd { margin:0; text-align:right; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+#stats dd { margin:0; font-variant-numeric:tabular-nums; }
 .bar { display:flex; align-items:center; gap:8px; padding:8px 12px; border-bottom:1px solid var(--line); background:var(--panel); min-height:45px; flex-wrap:wrap; }
 .bar strong { margin-right:auto; }
 .bar select { flex:1 1 180px; min-width:0; }
@@ -58,23 +73,34 @@ iframe { flex:1; height:100%; border:0; width:100%; background:#fff; }
 .empty { color:var(--muted); margin:auto; padding:20px; text-align:center; }
 @media (max-width: 900px) {
   body { display:block; height:auto; }
-  aside { border-right:0; border-bottom:1px solid var(--line); }
+  aside { border-right:0; border-bottom:1px solid var(--line); max-height:50vh; }
   section { height:80vh; }
   section + section { border-left:0; border-top:1px solid var(--line); }
 }
 </style>
 </head>
 <body>
-<aside>
-  <h1>문서 변환</h1>
-  <div id="drop" role="button" tabindex="0">PDF·EPUB 파일을 여기에 끌어놓거나<br>클릭해서 선택하세요</div>
-  <input id="file" type="file" accept=".pdf,.epub" multiple hidden>
+<header>
+  <h1><img id="logo" alt=""> Markitdown(customize) <small>뭐든지 md로</small></h1>
+  <button id="open" type="button">업로드</button>
   <label class="opt"><input id="split" type="checkbox" checked> 단원별로 분할 (목차를 AI가 판단)</label>
-  <p id="error" role="alert"></p>
   <div id="stats" aria-label="변환율" hidden>
     <div class="rate"><span>변환율</span><strong id="rate"></strong></div>
     <progress id="ratebar" max="100"></progress>
     <dl id="statlist"></dl>
+  </div>
+  <p id="error" role="alert"></p>
+</header>
+<dialog id="modal" aria-label="파일 업로드">
+  <div id="drop" role="button" tabindex="0">PDF·EPUB 파일을 여기에 끌어놓거나<br>클릭해서 선택하세요</div>
+  <input id="file" type="file" accept=".pdf,.epub" multiple hidden>
+  <button class="close" type="button" onclick="modal.close()">닫기</button>
+</dialog>
+<aside>
+  <h2>변환된 문서</h2>
+  <div class="sort" role="group" aria-label="정렬">
+    <button type="button" data-sort="new" aria-pressed="true">최신순</button>
+    <button type="button" data-sort="name" aria-pressed="false">ㄱㄴㄷ순</button>
   </div>
   <ul id="jobs"></ul>
 </aside>
@@ -95,7 +121,7 @@ iframe { flex:1; height:100%; border:0; width:100%; background:#fff; }
 const $ = id => document.getElementById(id);
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
 const LABEL = { queued:'대기 중', running:'변환 중', splitting:'목차 분석·분할 중', done:'완료', error:'실패' };
-let jobs = [], current = null, shownSource = null, shownPart = null, pos = 0, pageCount = 0, pdfDoc = null, pdfId = null, raw = false, mdText = '', mdBase = null;
+let sort = 'new', jobs = [], current = null, shownSource = null, shownPart = null, pos = 0, pageCount = 0, pdfDoc = null, pdfId = null, raw = false, mdText = '', mdBase = null;
 
 async function upload(files) {
   $('error').textContent = '';
@@ -117,7 +143,8 @@ function stateText(j) {
 }
 
 function drawJobs() {
-  $('jobs').replaceChildren(...jobs.map(j => {
+  const order = sort === 'name' ? (a, b) => a.name.localeCompare(b.name, 'ko') : (a, b) => b.created - a.created;
+  $('jobs').replaceChildren(...[...jobs].sort(order).map(j => {
     const li = document.createElement('li'), b = document.createElement('button');
     b.type = 'button';
     b.setAttribute('aria-current', j.id === current);
@@ -150,10 +177,11 @@ function drawStats(j) {
     rows.push(['쪽당 시간', `${each.toFixed(1)}초`]);
     if (j.status === 'running' && j.done < j.total) rows.push(['남은 시간(예상)', clock(each * (j.total - j.done))]);
   }
-  $('statlist').replaceChildren(...rows.flatMap(([k, v]) => {
-    const t = document.createElement('dt'), d = document.createElement('dd');
+  $('statlist').replaceChildren(...rows.map(([k, v]) => {
+    const w = document.createElement('div'), t = document.createElement('dt'), d = document.createElement('dd');
     t.textContent = k; d.textContent = v;
-    return [t, d];
+    w.append(t, d);
+    return w;
   }));
 }
 
@@ -265,13 +293,22 @@ async function refresh() {
   draw();
 }
 
-const drop = $('drop');
+const drop = $('drop'), modal = $('modal');
+$('logo').src = document.querySelector('link[rel=icon]').href;
+$('open').onclick = () => modal.showModal();
+modal.onclick = e => { if (e.target === modal) modal.close(); };  // click on the blurred backdrop
 drop.onclick = () => $('file').click();
 drop.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('file').click(); } };
-$('file').onchange = e => { upload([...e.target.files]); e.target.value = ''; };
-for (const t of ['dragenter', 'dragover']) addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); });
+$('file').onchange = e => { modal.close(); upload([...e.target.files]); e.target.value = ''; };
+// Dragging a file anywhere opens the modal, so the drop zone is always the target.
+for (const t of ['dragenter', 'dragover']) addEventListener(t, e => { e.preventDefault(); if (!modal.open) modal.showModal(); drop.classList.add('over'); });
 addEventListener('dragleave', e => { if (!e.relatedTarget) drop.classList.remove('over'); });
-addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('over'); upload([...e.dataTransfer.files]); });
+addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('over'); modal.close(); upload([...e.dataTransfer.files]); });
+for (const b of document.querySelectorAll('.sort button')) b.onclick = () => {
+  sort = b.dataset.sort;
+  for (const x of document.querySelectorAll('.sort button')) x.setAttribute('aria-pressed', x === b);
+  drawJobs();
+};
 $('parts').onchange = e => { const j = jobs.find(x => x.id === current), part = j.parts[e.target.value]; openPart(j, part); pos = part.first - 1; draw(); };
 $('mode').onclick = () => { raw = !raw; drawMd(); };
 $('prev').onclick = () => { pos--; draw(); };
