@@ -26,7 +26,7 @@ from markitdown import StreamInfo
 from markitdown.converters import EpubConverter
 
 from check_md import check
-from ocr_pdf import MODEL, PROMPT, LoggedOCR, PdfConverterWithOCR, load_pdf, make_client
+from ocr_pdf import MODEL, OCR_EFFORT, PROMPT, LoggedOCR, PdfConverterWithOCR, load_pdf, make_client
 
 HERE = Path(__file__).parent
 DATA = HERE.parent / "dashboard_data"
@@ -124,7 +124,7 @@ def ocr_pdf(job, path):
             return result
 
     job["total"] = len(pdfium.PdfDocument(path))
-    service = Progress(client=make_client(), model=MODEL, default_prompt=PROMPT)
+    service = Progress(client=make_client(OCR_EFFORT), model=MODEL, default_prompt=PROMPT)
     return PdfConverterWithOCR()._ocr_full_pages(load_pdf(path, None), service)
 
 

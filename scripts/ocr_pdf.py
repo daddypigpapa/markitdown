@@ -9,6 +9,7 @@ setup:  pip install -e packages/markitdown-ocr openai
 key:    VISION_OCR_GEMINI_API_KEY from the environment, else from ~/claude/key.env
 usage:  python -X utf8 scripts/ocr_pdf.py {full|plugin} IN.pdf OUT.md [first-last pages, 1-based]
 """
+import functools
 import io
 import os
 import sys
@@ -22,6 +23,9 @@ from markitdown import MarkItDown, StreamInfo
 from markitdown_ocr._ocr_service import LLMVisionOCRService
 from markitdown_ocr._pdf_converter_with_ocr import PdfConverterWithOCR
 
+# thinking off for transcription: 3-page test (any2mdhub docs/04 §7.1) -- same text, 3-14x faster, and the
+# default thinking rewrote a printed problem (2x²+1/x²-2x -> x²+1/x²). Chapter splitting keeps the default.
+OCR_EFFORT = "none"
 MODEL = "gemini-3.8-flash"  # pinned: *-latest aliases can change underneath; 0 misreads in a 3-page comparison
 PROMPT = (
     "This is one page of a Korean middle-school math textbook. "
@@ -67,18 +71,21 @@ def load_pdf(path, pages):
     return buf
 
 
-def make_client():
+def make_client(reasoning_effort=None):
     load_dotenv(Path.home() / "claude" / "key.env")  # does not override a real env var
-    return OpenAI(
+    client = OpenAI(
         api_key=os.environ["VISION_OCR_GEMINI_API_KEY"],
         base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
     )
+    if reasoning_effort:  # the OCR plugin calls create() itself, so the setting rides on the client
+        client.chat.completions.create = functools.partial(client.chat.completions.create, reasoning_effort=reasoning_effort)
+    return client
 
 
 def main():
     mode, src, out = sys.argv[1:4]
     pages = sys.argv[4] if len(sys.argv) > 4 else None
-    client = make_client()
+    client = make_client(OCR_EFFORT)
     pdf = load_pdf(src, pages)
     t0 = time.time()
     if mode == "full":
