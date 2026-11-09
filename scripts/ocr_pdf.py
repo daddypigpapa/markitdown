@@ -10,7 +10,6 @@ key:    VISION_OCR_GEMINI_API_KEY from the environment, else from ~/claude/key.e
 usage:  python -X utf8 scripts/ocr_pdf.py {full|plugin} IN.pdf OUT.md [first-last pages, 1-based] [--kinds=figure,math,text]
         (--kinds picks the full-mode prompt by document type; see KINDS)
 """
-import functools
 import io
 import os
 import sys
@@ -106,8 +105,18 @@ def make_client(reasoning_effort=None):
         api_key=os.environ["VISION_OCR_GEMINI_API_KEY"],
         base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
     )
-    if reasoning_effort:  # the OCR plugin calls create() itself, so the setting rides on the client
-        client.chat.completions.create = functools.partial(client.chat.completions.create, reasoning_effort=reasoning_effort)
+    real = client.chat.completions.create
+
+    def create(*args, **kwargs):  # the OCR plugin calls create() itself, so these ride on the client
+        if reasoning_effort:
+            kwargs.setdefault("reasoning_effort", reasoning_effort)
+        r = real(*args, **kwargs)
+        if r.usage:  # Gemini's OpenAI layer leaves thinking out of completion_tokens; total - prompt is what is billed as output
+            print(f"  usage model={kwargs.get('model')} in={r.usage.prompt_tokens} out={r.usage.total_tokens - r.usage.prompt_tokens}",
+                  file=sys.stderr, flush=True)
+        return r
+
+    client.chat.completions.create = create
     return client
 
 
